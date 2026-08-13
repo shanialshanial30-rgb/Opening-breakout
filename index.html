@@ -245,193 +245,163 @@ if (currentTrade) {
 }
 
 async function loadLiveData() {
-  const apiKey = getApiKey();
+    const apiKey = getApiKey();
 
-  if (!apiKey) {
-    alert("No Twelve Data API key entered.");
-    return;
-  }
-
-  document.getElementById("state").textContent =
-    "Loading opening prices...";
-
-  try {
-    /*
-      STEP 1:
-      Get the opening price once.
-      We don't repeatedly call this endpoint.
-    */
-
-    const symbols = stocks.join(",");
-
-    const url =
-      "https://api.twelvedata.com/quote" +
-      "?symbol=" + encodeURIComponent(symbols) +
-      "&apikey=" + encodeURIComponent(apiKey);
-
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status);
-    }
-
-    liveData = {};
-
-    stocks.forEach(symbol => {
-      const d = data[symbol];
-
-      if (!d || d.status === "error") {
+    if (!apiKey) {
+        alert("No Twelve Data API key entered.");
         return;
-      }
-
-      liveData[symbol] = {
-        price: Number(d.close),
-        open: Number(d.open),
-        volume: Number(d.volume || 0),
-        marketOpen: d.is_market_open
-      };
-    });
-
-    render();
-
-    document.getElementById("state").textContent =
-      "Connecting to live prices...";
-
-    /*
-      STEP 2:
-      Connect to Twelve Data WebSocket.
-    */
-
-    if (window.openingBreakoutSocket) {
-      try {
-        window.openingBreakoutSocket.close();
-      } catch (e) {}
     }
 
-    const ws = new WebSocket(
-      "wss://ws.twelvedata.com/v1/quotes/price?apikey=" +
-      encodeURIComponent(apiKey)
-    );
+    const state = document.getElementById("state");
+    state.textContent = "Loading opening prices...";
 
-    window.openingBreakoutSocket = ws;
+    try {
+        const symbols = stocks.join(",");
 
-    ws.onopen = function () {
-      console.log("WebSocket connected");
+        // Get opening prices once
+        const url =
+            "https://api.twelvedata.com/quote" +
+            "?symbol=" + encodeURIComponent(symbols) +
+            "&apikey=" + encodeURIComponent(apiKey);
 
-      ws.send(JSON.stringify({
-        action: "subscribe",
-        params: {
-          symbols: symbols
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error("HTTP " + response.status);
         }
-      }));
 
-      document.getElementById("state").textContent =
-        "Live WebSocket connected";
-    };
+        if (data.status === "error") {
+            throw new Error(data.message || "Twelve Data error");
+        }
 
-    ws.onmessage = function (event) {
-      try {
-        const message = JSON.parse(event.data);
+        liveData = {};
 
-        console.log("LIVE:", message);
+        stocks.forEach(symbol => {
+            const d = data[symbol];
 
-        /*
-          Twelve Data sends price updates here.
-        */
-
-        if (
-          message.event === "price" &&
-          message.symbol &&
-          message.price !== undefined
-        ) {
-          const symbol = message.symbol;
-          const price = Number(message.price);
-
-          if (!liveData[symbol]) {
-            liveData[symbol] = {
-              price: price,
-              open: price,
-              volume: 0,
-              marketOpen: true
-            };
-          } else {
-            liveData[symbol].price = price;
-
-            if (message.day_volume !== undefined) {
-              liveData[symbol].volume =
-                Number(message.day_volume);
+            if (!d || d.status === "error") {
+                return;
             }
-          }
 
-          /*
-            IMPORTANT:
-            Run the existing strategy immediately
-            using the new live price.
-          */
+            liveData[symbol] = {
+                price: Number(d.close),
+                open: Number(d.open),
+                volume: Number(d.volume || 0),
+                marketOpen: d.is_market_open
+            };
+        });
 
-          render();
+        render();
+
+        state.textContent = "Connecting to live prices...";
+
+        // Close previous connection
+        if (window.openingBreakoutSocket) {
+            try {
+                window.openingBreakoutSocket.close();
+            } catch (e) {}
         }
 
-      } catch (error) {
-        console.error("WebSocket message error:", error);
-      }
-    };
+        // Open WebSocket
+        const ws = new WebSocket(
+            "wss://ws.twelvedata.com/v1/quotes/price?apikey=" +
+            encodeURIComponent(apiKey)
+        );
 
-    ws.onerror = function (error) {
-      console.error("WebSocket error:", error);
+        window.openingBreakoutSocket = ws;
 
-      document.getElementById("state").textContent =
-        "WebSocket error";
-    };
+        ws.onopen = function () {
+            console.log("WebSocket connected");
 
-    ws.onclose = function () {
-      console.log("WebSocket closed");
+            ws.send(JSON.stringify({
+                action: "subscribe",
+                params: {
+                    symbols: symbols
+                }
+            }));
 
-      if (running) {
-        document.getElementById("state").textContent =
-          "Live connection closed";
-      }
-    };
-const heartbeat = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            action: "heartbeat"
-        }));
+            state.textContent = "Live WebSocket connected";
+        };
+
+        ws.onmessage = function (event) {
+            try {
+                const message = JSON.parse(event.data);
+
+                console.log("LIVE:", message);
+
+                if (
+                    message.event === "price" &&
+                    message.symbol &&
+                    message.price !== undefined
+                ) {
+                    const symbol = message.symbol;
+                    const price = Number(message.price);
+
+                    if (!liveData[symbol]) {
+                        liveData[symbol] = {
+                            price: price,
+                            open: price,
+                            volume: 0,
+                            marketOpen: true
+                        };
+                    } else {
+                        liveData[symbol].price = price;
+
+                        if (message.day_volume !== undefined) {
+                            liveData[symbol].volume =
+                                Number(message.day_volume);
+                        }
+                    }
+
+                    // Immediately run the strategy
+                    render();
+                }
+
+            } catch (error) {
+                console.error("WebSocket message error:", error);
+            }
+        };
+
+        ws.onerror = function (error) {
+            console.error("WebSocket error:", error);
+            state.textContent = "WebSocket error";
+        };
+
+        ws.onclose = function () {
+            console.log("WebSocket closed");
+
+            if (running) {
+                state.textContent = "Live connection closed";
+            }
+
+            clearInterval(window.openingBreakoutHeartbeat);
+        };
+
+        // Twelve Data recommends a heartbeat every 10 seconds
+        window.openingBreakoutHeartbeat =
+            setInterval(() => {
+
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        action: "hearbeat"
+                    }));
+                }
+
+            }, 10000);
+
+    } catch (error) {
+
+        console.error(error);
+
+        state.textContent = "Data error";
+
+        alert(
+            "Could not load live data.\n\n" +
+            error.message +
+            "\n\nCheck your Twelve Data API key."
+        );
     }
-}, 10000);
-
-
-  } catch (error) {
-
-    console.error(error);
-
-    document.getElementById("state").textContent =
-      "Data error";
-
-    alert(
-      "Could not load live data.\n\n" +
-      error.message +
-      "\n\nCheck your Twelve Data API key."
-    );
-  }
-}
-    document.getElementById("state").textContent =
-      "Live data loaded";
-
-  } catch (error) {
-
-    console.error(error);
-
-    document.getElementById("state").textContent =
-      "Data error";
-
-    alert(
-      "Could not load live data.\n\n" +
-      error.message +
-      "\n\nCheck your Twelve Data API key and plan."
-    );
-  }
 }
 
 document.getElementById("start").onclick = async () => {
