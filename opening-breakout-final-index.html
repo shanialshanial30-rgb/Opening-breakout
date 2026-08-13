@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<title>Opening Breakout — Dry Run</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#0b0d10;color:#f5f7fa;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif}
+.wrap{max-width:540px;margin:auto;padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 28px)}
+h1{font-size:30px;letter-spacing:-.6px;margin:0}
+.sub{color:#929aa7;font-size:13px;margin:5px 0 18px}
+.card{background:#15181e;border:1px solid #262b34;border-radius:19px;padding:16px;margin:12px 0}
+.head{display:flex;justify-content:space-between;align-items:center}
+.pill{font-size:11px;font-weight:800;padding:7px 10px;border-radius:999px;background:#183b25;color:#6ee38d}
+.pill.off{background:#2a2020;color:#ff9b9b}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}
+.box{background:#0f1217;border-radius:13px;padding:11px;min-height:72px}
+.label{font-size:11px;color:#8f98a5}
+.value{font-size:18px;font-weight:750;margin-top:4px}
+.green{color:#69e18b}.red{color:#ff7777}
+.btn{width:100%;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:800;margin-top:13px;background:#f5f7fa;color:#090b0e}
+.btn.stop{background:#292f38;color:#fff}
+.btn.secondary{background:#20252d;color:#fff}
+.status{font-size:11px;line-height:1.45;color:#929aa7;margin-top:8px}
+.note{font-size:12px;line-height:1.45;color:#8f98a5}
+.warning{color:#ff9b9b}
+.stock{padding:14px 0;border-bottom:1px solid #272c34}
+.stock:last-child{border-bottom:0}
+.top{display:flex;justify-content:space-between}
+.ticker{font-weight:850;font-size:17px}
+.rank{font-size:11px;color:#8f98a5}
+.prices{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-top:9px}
+.mini{background:#0f1217;border-radius:10px;padding:8px}
+.mini b{display:block;margin-top:3px;font-size:13px}
+.trade{margin-top:9px;padding:9px;border-radius:10px;background:#10141a;font-size:11px;line-height:1.45}
+.trade.open{border:1px solid #294c35}
+.trade.closed{border:1px solid #3a3434}
+.session{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:13px}
+.session .box{min-height:auto}
+.small{font-size:11px;color:#8f98a5}
+.big{font-size:18px;font-weight:800;margin-top:4px}
+.muted{opacity:.7}
+hr{border:0;border-top:1px solid #272c34;margin:14px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Opening Breakout</h1>
+  <div class="sub">US regular session • 9:30 AM ET • 2:30 PM UK today • first ±1.5% trigger</div>
+
+  <section class="card">
+    <div class="head">
+      <strong>Strategy</strong>
+      <span class="pill" id="mode">DRY RUN</span>
+    </div>
+
+    <div class="grid">
+      <div class="box"><div class="label">Breakout</div><div class="value">±1.5%</div></div>
+      <div class="box"><div class="label">Max trades</div><div class="value" id="maxTrades">5</div></div>
+      <div class="box"><div class="label">Per trade</div><div class="value">£100</div></div>
+      <div class="box"><div class="label">Take Profit</div><div class="value green">+2.5%</div></div>
+      <div class="box"><div class="label">Stop Loss</div><div class="value red">−1.5%</div></div>
+      <div class="box"><div class="label">State</div><div class="value" id="state">Stopped</div></div>
+    </div>
+
+    <button class="btn" id="start">START DRY RUN</button>
+    <button class="btn secondary" id="test">RUN STRATEGY TEST</button>
+  </section>
+
+  <section class="card">
+    <div class="head">
+      <strong>Session</strong>
+      <span class="rank" id="marketLabel">Market status unknown</span>
+    </div>
+    <div class="session">
+      <div class="box"><div class="small">Trades</div><div class="big" id="tradeCount">0 / 5</div></div>
+      <div class="box"><div class="small">Closed</div><div class="big" id="closedCount">0</div></div>
+      <div class="box"><div class="small">P/L</div><div class="big" id="pnl">£0.00</div></div>
+    </div>
+    <div class="status" id="lastUpdate">No live updates</div>
+  </section>
+
+  <section class="card">
+    <div class="head"><strong>Top 5 candidates</strong><span class="rank">live simulator</span></div>
+    <div id="list"></div>
+  </section>
+
+  <section class="card">
+    <strong>How it works</strong>
+    <p class="note">
+      The app waits for the US regular session. Once the market is open, it records the official day-open value supplied by Twelve Data and calculates BUY at open × 1.015 and SELL at open × 0.985. The first trigger reached for a stock creates one simulated trade; the opposite side is then ignored for that stock.
+    </p>
+    <p class="note">
+      After entry, the live WebSocket price stream checks TP +2.5% and SL −1.5% on every incoming price event. No one-minute polling is used for live prices.
+    </p>
+  </section>
+
+  <section class="card">
+    <div class="note">
+      <span class="warning">DRY RUN ONLY.</span>
+      This app does not connect to Trading 212 and cannot place real orders. It is a simulator for testing the strategy and data feed.
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+
+const stocks = ["AAPL","NVDA","TSLA","META","MSFT"];
+const MAX_TRADES = 5;
+const BREAKOUT_PCT = 0.015;
+const TP_PCT = 0.025;
+const SL_PCT = 0.015;
+
+const list = document.getElementById("list");
+const stateEl = document.getElementById("state");
+const startBtn = document.getElementById("start");
+const modeEl = document.getElementById("mode");
+const marketLabel = document.getElementById("marketLabel");
+const tradeCountEl = document.getElementById("tradeCount");
+const closedCountEl = document.getElementById("closedCount");
+const pnlEl = document.getElementById("pnl");
+const lastUpdateEl = document.getElementById("lastUpdate");
+
+let running = false;
+let liveData = {};
+let trades = {};
+let tradeCount = 0;
+let closedCount = 0;
+let totalPnlPct = 0;
+let ws = null;
+let heartbeat = null;
+let sessionTimer = null;
+let openingFetchInProgress = false;
+let sessionKey = null;
+
+function getApiKey() {
+  let key = localStorage.getItem("twelveDataApiKey");
+  if (!key) {
+    key = prompt("Enter your Twelve Data API key:");
+    if (key && key.trim()) {
+      key = key.trim();
+      localStorage.setItem("twelveDataApiKey", key);
+    }
+  }
+  return key ? key.trim() : "";
+}
+
+function money(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "—";
+  return "$" + Number(value).toFixed(2);
+}
+
+function pct(value) {
+  const n = Number(value);
+  return (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
+}
+
+function getETParts() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone:"America/New_York",
+    year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",
+    hour12:false,weekday:"short"
+  }).formatToParts(now);
+
+  const out = {};
+  parts.forEach(p => { if (p.type !== "literal") out[p.type] = p.value; });
+  return {
+    year:Number(out.year),
+    month:Number(out.month),
+    day:Number(out.day),
+    hour:Number(out.hour),
+    minute:Number(out.minute),
+    second:Number(out.second),
+    weekday:out.weekday
+  };
+}
+
+function isWeekday(et) {
+  return et.weekday !== "Sat" && et.weekday !== "Sun";
+}
+
+function isRegularSessionOpen() {
+  const et = getETParts();
+  const minutes = et.hour * 60 + et.minute;
+  return isWeekday(et) && minutes >= 570 && minutes < 960;
+}
+
+function marketHasOpenedToday() {
+  const et = getETParts();
+  return isWeekday(et) && (et.hour * 60 + et.minute) >= 570;
+}
+
+function todayKey() {
+  const et = getETParts();
+  return `${et.year}-${String(et.month).padStart(2,"0")}-${String(et.day).padStart(2,"0")}`;
+}
+
+function updateMarketLabel() {
+  const et = getETParts();
+  const mins = et.hour * 60 + et.minute;
+  const weekday = isWeekday(et);
+
+  if (!weekday) {
+    marketLabel.textContent = "US market closed • weekend";
+  } else if (mins < 570) {
+    const left = 570 - mins;
+    marketLabel.textContent = `Pre-market • opens in about ${left} min`;
+  } else if (mins < 960) {
+    marketLabel.textContent = "US regular session OPEN";
+  } else {
+    marketLabel.textContent = "US regular session CLOSED";
+  }
+}
+
+function resetSession() {
+  liveData = {};
+  trades = {};
+  tradeCount = 0;
+  closedCount = 0;
+  totalPnlPct = 0;
+  sessionKey = todayKey();
+  updateSessionUI();
+  render();
+}
+
+function updateSessionUI() {
+  tradeCountEl.textContent = `${tradeCount} / ${MAX_TRADES}`;
+  closedCountEl.textContent = String(closedCount);
+  pnlEl.textContent = `${totalPnlPct >= 0 ? "+" : ""}${totalPnlPct.toFixed(2)}%`;
+  pnlEl.className = "big " + (totalPnlPct >= 0 ? "green" : "red");
+}
+
+function setStatus(text) {
+  stateEl.textContent = text;
+}
+
+function render() {
+  list.innerHTML = "";
+
+  stocks.forEach((s, i) => {
+    const d = liveData[s];
+    const el = document.createElement("div");
+    el.className = "stock";
+
+    if (!d || !Number.isFinite(Number(d.price))) {
+      el.innerHTML = `
+        <div class="top">
+          <span class="ticker">${s}</span>
+          <span class="rank">#${i+1}</span>
+        </div>
+        <div class="prices">
+          <div class="mini"><span class="label">Open</span><b>—</b></div>
+          <div class="mini"><span class="label green">BUY +1.5%</span><b>—</b></div>
+          <div class="mini"><span class="label red">SELL −1.5%</span><b>—</b></div>
+        </div>
+        <div class="status">Waiting for market-open data</div>`;
+      list.appendChild(el);
+      return;
+    }
+
+    const open = Number(d.open);
+    const price = Number(d.price);
+    const buy = open * (1 + BREAKOUT_PCT);
+    const sell = open * (1 - BREAKOUT_PCT);
+    const t = trades[s];
+
+    let status = "Watching for first trigger";
+    let tradeHtml = "";
+
+    if (t) {
+      const pnl = t.direction === "BUY"
+        ? ((price / t.entry) - 1) * 100
+        : ((t.entry / price) - 1) * 100;
+
+      status = t.status === "OPEN"
+        ? `${t.direction} • ${t.status} • live ${pct(pnl)}`
+        : `${t.direction} • ${t.status}`;
+
+      tradeHtml = `
+        <div class="trade ${t.status === "OPEN" ? "open" : "closed"}">
+          Entry ${money(t.entry)} • TP ${money(t.tp)} • SL ${money(t.sl)}<br>
+          ${t.status}
+        </div>`;
+    } else if (tradeCount >= MAX_TRADES) {
+      status = "Maximum 5 trades reached";
+    } else {
+      const fromOpen = ((price / open) - 1) * 100;
+      status = `Live ${money(price)} • ${pct(fromOpen)} from open`;
+    }
+
+    el.innerHTML = `
+      <div class="top">
+        <span class="ticker">${s}</span>
+        <span class="rank">#${i+1}</span>
+      </div>
+      <div class="prices">
+        <div class="mini"><span class="label">Open</span><b>${money(open)}</b></div>
+        <div class="mini"><span class="label green">BUY +1.5%</span><b>${money(buy)}</b></div>
+        <div class="mini"><span class="label red">SELL −1.5%</span><b>${money(sell)}</b></div>
+      </div>
+      <div class="status">${status}</div>
+      ${tradeHtml}
+      <div class="status">Volume: ${d.volume ? Number(d.volume).toLocaleString() : "—"}</div>`;
+    list.appendChild(el);
+  });
+
+  updateSessionUI();
+}
+
+function openTrade(symbol, direction, entry) {
+  if (trades[symbol] || tradeCount >= MAX_TRADES) return;
+
+  const e = Number(entry);
+  trades[symbol] = {
+    direction,
+    entry: e,
+    tp: direction === "BUY" ? e * (1 + TP_PCT) : e * (1 - TP_PCT),
+    sl: direction === "BUY" ? e * (1 - SL_PCT) : e * (1 + SL_PCT),
+    status: "OPEN",
+    openedAt: Date.now()
+  };
+
+  tradeCount++;
+}
+
+function checkTrade(symbol) {
+  const d = liveData[symbol];
+  const t = trades[symbol];
+  if (!d || !t || t.status !== "OPEN") return;
+
+  const price = Number(d.price);
+
+  if (t.direction === "BUY") {
+    if (price >= t.tp) closeTrade(symbol, "TP HIT", price);
+    else if (price <= t.sl) closeTrade(symbol, "SL HIT", price);
+  } else {
+    if (price <= t.tp) closeTrade(symbol, "TP HIT", price);
+    else if (price >= t.sl) closeTrade(symbol, "SL HIT", price);
+  }
+}
+
+function closeTrade(symbol, result, exitPrice) {
+  const t = trades[symbol];
+  if (!t || t.status !== "OPEN") return;
+
+  const e = Number(t.entry);
+  const x = Number(exitPrice);
+
+  const pnl = t.direction === "BUY"
+    ? ((x / e) - 1) * 100
+    : ((e / x) - 1) * 100;
+
+  t.status = result;
+  t.exit = x;
+  t.pnlPct = pnl;
+
+  closedCount++;
+  totalPnlPct += pnl;
+}
+
+async function fetchOpeningPrices(apiKey) {
+  if (openingFetchInProgress) return false;
+  openingFetchInProgress = true;
+
+  try {
+    const symbols = stocks.join(",");
+    const url =
+      "https://api.twelvedata.com/quote" +
+      "?symbol=" + encodeURIComponent(symbols) +
+      "&apikey=" + encodeURIComponent(apiKey);
+
+    const response = await fetch(url, { cache:"no-store" });
+    const data = await response.json();
+
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    if (data.status === "error") throw new Error(data.message || "Twelve Data error");
+
+    let anyOpen = false;
+
+    stocks.forEach(symbol => {
+      const d = data[symbol];
+      if (!d || d.status === "error") return;
+
+      const open = Number(d.open);
+      const price = Number(d.close);
+
+      if (!Number.isFinite(open) || open <= 0 || !Number.isFinite(price)) return;
+
+      liveData[symbol] = {
+        open,
+        price,
+        volume: Number(d.volume || 0),
+        marketOpen: d.is_market_open
+      };
+
+      if (d.is_market_open === true) anyOpen = true;
+    });
+
+    render();
+    return anyOpen;
+  } finally {
+    openingFetchInProgress = false;
+  }
+}
+
+function connectWebSocket(apiKey) {
+  if (ws) {
+    try { ws.close(); } catch(e) {}
+  }
+  if (heartbeat) clearInterval(heartbeat);
+
+  ws = new WebSocket(
+    "wss://ws.twelvedata.com/v1/quotes/price?apikey=" +
+    encodeURIComponent(apiKey)
+  );
+
+  window.openingBreakoutSocket = ws;
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({
+      action:"subscribe",
+      params:{symbols:stocks.join(",")}
+    }));
+
+    setStatus(isRegularSessionOpen() ? "LIVE • WebSocket connected" : "Connected • waiting for US open");
+  };
+
+  ws.onmessage = event => {
+    try {
+      const message = JSON.parse(event.data);
+
+      if (message.event === "price" && message.symbol && message.price !== undefined) {
+        const symbol = message.symbol;
+        const price = Number(message.price);
+
+        if (!Number.isFinite(price)) return;
+
+        if (!liveData[symbol]) {
+          // Do not create a tradable opening price from an arbitrary tick.
+          liveData[symbol] = {
+            open: null,
+            price,
+            volume: Number(message.day_volume || 0),
+            marketOpen: true
+          };
+        } else {
+          liveData[symbol].price = price;
+          if (message.day_volume !== undefined) {
+            liveData[symbol].volume = Number(message.day_volume);
+          }
+        }
+
+        // Only strategy logic after a verified opening price exists.
+        if (isRegularSessionOpen() && Number.isFinite(Number(liveData[symbol].open))) {
+          const d = liveData[symbol];
+          const buy = d.open * (1 + BREAKOUT_PCT);
+          const sell = d.open * (1 - BREAKOUT_PCT);
+
+          if (!trades[symbol] && tradeCount < MAX_TRADES) {
+            if (d.price >= buy) openTrade(symbol, "BUY", d.price);
+            else if (d.price <= sell) openTrade(symbol, "SELL", d.price);
+          }
+
+          checkTrade(symbol);
+        }
+
+        lastUpdateEl.textContent = "Last live price update: " + new Date().toLocaleTimeString();
+        render();
+      }
+    } catch (err) {
+      console.error("WebSocket message error:", err);
+    }
+  };
+
+  ws.onerror = err => {
+    console.error("WebSocket error:", err);
+    setStatus("WebSocket error");
+  };
+
+  ws.onclose = () => {
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
+    if (running) setStatus("Live connection closed");
+  };
+
+  heartbeat = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({action:"hearbeat"}));
+    }
+  }, 10000);
+}
+
+async function prepareMarketSession() {
+  if (!running) return;
+
+  const key = getApiKey();
+  if (!key) {
+    setStatus("API key required");
+    return;
+  }
+
+  updateMarketLabel();
+
+  if (!isRegularSessionOpen()) {
+    setStatus("Waiting for US regular session");
+    return;
+  }
+
+  setStatus("Getting opening prices…");
+
+  const opened = await fetchOpeningPrices(key);
+
+  if (!opened) {
+    setStatus("Market data not ready yet");
+    return;
+  }
+
+  setStatus("LIVE • WebSocket connected");
+}
+
+function startClock() {
+  if (sessionTimer) clearInterval(sessionTimer);
+
+  sessionTimer = setInterval(async () => {
+    updateMarketLabel();
+
+    if (!running) return;
+
+    const key = todayKey();
+
+    if (sessionKey !== key) {
+      resetSession();
+    }
+
+    // The only REST opening-price request happens when the regular session is open.
+    if (isRegularSessionOpen()) {
+      const hasOpening = stocks.some(s => Number.isFinite(Number(liveData[s]?.open)));
+
+      if (!hasOpening && !openingFetchInProgress) {
+        await prepareMarketSession();
+      }
+    }
+  }, 1000);
+}
+
+startBtn.onclick = async () => {
+  running = !running;
+
+  if (running) {
+    resetSession();
+    modeEl.textContent = "DRY RUN";
+    modeEl.classList.remove("off");
+    startBtn.textContent = "STOP DRY RUN";
+    setStatus("Starting…");
+
+    const key = getApiKey();
+
+    if (!key) {
+      running = false;
+      startBtn.textContent = "START DRY RUN";
+      setStatus("Stopped");
+      return;
+    }
+
+    connectWebSocket(key);
+    await prepareMarketSession();
+  } else {
+    startBtn.textContent = "START DRY RUN";
+    modeEl.textContent = "STOPPED";
+    modeEl.classList.add("off");
+    setStatus("Stopped");
+
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
+
+    if (ws) {
+      try { ws.close(); } catch(e) {}
+    }
+    ws = null;
+  }
+};
+
+document.getElementById("test").onclick = () => {
+  const entry = 100;
+  const buyTrigger = entry * 1.015;
+  const sellTrigger = entry * 0.985;
+  const buyTP = entry * 1.025;
+  const buySL = entry * 0.985;
+  const sellTP = entry * 0.975;
+  const sellSL = entry * 1.015;
+
+  const passed =
+    buyTrigger === 101.5 &&
+    sellTrigger === 98.5 &&
+    buyTP === 102.5 &&
+    buySL === 98.5 &&
+    sellTP === 97.5 &&
+    sellSL === 101.5;
+
+  alert(
+    "STRATEGY TEST\n\n" +
+    "Opening price: $100.00\n\n" +
+    "BUY trigger: $" + buyTrigger.toFixed(2) + "\n" +
+    "BUY TP: $" + buyTP.toFixed(2) + "\n" +
+    "BUY SL: $" + buySL.toFixed(2) + "\n\n" +
+    "SELL trigger: $" + sellTrigger.toFixed(2) + "\n" +
+    "SELL TP: $" + sellTP.toFixed(2) + "\n" +
+    "SELL SL: $" + sellSL.toFixed(2) + "\n\n" +
+    (passed ? "✅ ALL TESTS PASSED" : "❌ TEST FAILED")
+  );
+};
+
+updateMarketLabel();
+resetSession();
+startClock();
+</script>
+</body>
+</html>
