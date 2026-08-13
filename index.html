@@ -393,6 +393,14 @@ async function loadLiveData() {
           "Live connection closed";
       }
     };
+const heartbeat = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            action: "heartbeat"
+        }));
+    }
+}, 10000);
+
 
   } catch (error) {
 
