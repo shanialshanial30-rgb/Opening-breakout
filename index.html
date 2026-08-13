@@ -41,33 +41,221 @@ h1{font-size:30px;letter-spacing:-.6px;margin:0}.sub{color:#929aa7;font-size:13p
 </section>
 </div>
 
-<script>
-const stocks=["RKLB","ASTS","HIMS","NVDA","TSLA"];
-const list=document.getElementById("list");
-let running=false;
-const demoOpen={RKLB:40,ASTS:55,HIMS:45,NVDA:180,TSLA:300};
+<<script>
+const stocks = ["RKLB","ASTS","HIMS","NVDA","TSLA"];
+const list = document.getElementById("list");
 
-function render(){
- list.innerHTML="";
- stocks.forEach((s,i)=>{
-   const open=demoOpen[s], buy=open*1.015, sell=open*.985;
-   const el=document.createElement("div"); el.className="stock";
-   el.innerHTML=`<div class="top"><span class="ticker">${s}</span><span class="rank">#${i+1}</span></div>
-   <div class="prices">
-    <div class="mini"><span class="label">Open</span><b>$${open.toFixed(2)}</b></div>
-    <div class="mini"><span class="label green">BUY +1.5%</span><b class="green">$${buy.toFixed(2)}</b></div>
-    <div class="mini"><span class="label red">SELL −1.5%</span><b class="red">$${sell.toFixed(2)}</b></div>
-   </div>
-   <div class="status">${running?"Watching for first trigger":"Waiting to start"}</div>`;
-   list.appendChild(el);
- });
+let running = false;
+let liveData = {};
+
+function getApiKey() {
+  let key = localStorage.getItem("twelveDataApiKey");
+
+  if (!key) {
+    key = prompt("Enter your Twelve Data API key:");
+    if (key && key.trim()) {
+      key = key.trim();
+      localStorage.setItem("twelveDataApiKey", key);
+    }
+  }
+
+  return key;
 }
-document.getElementById("start").onclick=()=>{
- running=!running;
- document.getElementById("state").textContent=running?"Running":"Stopped";
- const b=document.getElementById("start"); b.textContent=running?"STOP DRY RUN":"START DRY RUN"; b.classList.toggle("stop",running);
- render();
+
+function money(value) {
+  if (value === null || value === undefined || isNaN(value)) return "—";
+  return "$" + Number(value).toFixed(2);
+}
+
+function render() {
+  list.innerHTML = "";
+
+  stocks.forEach((s, i) => {
+    const d = liveData[s];
+
+    const el = document.createElement("div");
+
+    if (!d) {
+      el.innerHTML = `
+        <div class="top">
+          <span class="ticker">${s}</span>
+          <span class="rank">#${i + 1}</span>
+        </div>
+
+        <div class="prices">
+          <div class="mini">
+            <span class="label">Open</span>
+            <strong>Loading...</strong>
+          </div>
+
+          <div class="mini">
+            <span class="label green">BUY +1.5%</span>
+            <strong>—</strong>
+          </div>
+
+          <div class="mini">
+            <span class="label red">SELL −1.5%</span>
+            <strong>—</strong>
+          </div>
+        </div>
+
+        <div class="status">Waiting for live data</div>
+      `;
+
+      list.appendChild(el);
+      return;
+    }
+
+    const open = Number(d.open);
+    const price = Number(d.price);
+
+    const buy = open * 1.015;
+    const sell = open * 0.985;
+
+    let status = "Watching for first trigger";
+
+    if (price >= buy) {
+      status = "🟢 BUY trigger reached — DRY RUN";
+    } else if (price <= sell) {
+      status = "🔴 SELL trigger reached — DRY RUN";
+    } else {
+      const distanceBuy = ((price / open) - 1) * 100;
+      status = `Live ${money(price)} • ${distanceBuy >= 0 ? "+" : ""}${distanceBuy.toFixed(2)}% from open`;
+    }
+
+    el.innerHTML = `
+      <div class="top">
+        <span class="ticker">${s}</span>
+        <span class="rank">#${i + 1}</span>
+      </div>
+
+      <div class="prices">
+
+        <div class="mini">
+          <span class="label">Open</span>
+          <strong>${money(open)}</strong>
+        </div>
+
+        <div class="mini">
+          <span class="label green">BUY +1.5%</span>
+          <strong>${money(buy)}</strong>
+        </div>
+
+        <div class="mini">
+          <span class="label red">SELL −1.5%</span>
+          <strong>${money(sell)}</strong>
+        </div>
+
+      </div>
+
+      <div class="status">
+        ${status}
+      </div>
+
+      <div class="status">
+        Volume: ${d.volume ? Number(d.volume).toLocaleString() : "—"}
+      </div>
+    `;
+
+    list.appendChild(el);
+  });
+}
+
+async function loadLiveData() {
+
+  const apiKey = getApiKey();
+
+  if (!apiKey) {
+    alert("No Twelve Data API key entered.");
+    return;
+  }
+
+  document.getElementById("state").textContent = "Loading live data...";
+
+  try {
+
+    const symbols = stocks.join(",");
+
+    const url =
+      "https://api.twelvedata.com/quote" +
+      "?symbol=" + encodeURIComponent(symbols) +
+      "&apikey=" + encodeURIComponent(apiKey);
+
+    const response = await fetch(url);
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+
+    if (data.status === "error") {
+      throw new Error(data.message || "Twelve Data error");
+    }
+
+    liveData = {};
+
+    stocks.forEach(symbol => {
+
+      const d = data[symbol];
+
+      if (!d || d.status === "error") {
+        return;
+      }
+
+      liveData[symbol] = {
+        price: Number(d.close),
+        open: Number(d.open),
+        volume: Number(d.volume || 0),
+        marketOpen: d.is_market_open
+      };
+
+    });
+
+    render();
+
+    document.getElementById("state").textContent =
+      "Live data loaded";
+
+  } catch (error) {
+
+    console.error(error);
+
+    document.getElementById("state").textContent =
+      "Data error";
+
+    alert(
+      "Could not load live data.\n\n" +
+      error.message +
+      "\n\nCheck your Twelve Data API key and plan."
+    );
+  }
+}
+
+document.getElementById("start").onclick = async () => {
+
+  running = !running;
+
+  const state = document.getElementById("state");
+  const button = document.getElementById("start");
+
+  if (running) {
+
+    state.textContent = "Running • DRY RUN";
+
+    button.textContent = "STOP DRY RUN";
+
+    await loadLiveData();
+
+  } else {
+
+    state.textContent = "Stopped";
+
+    button.textContent = "START DRY RUN";
+
+  }
 };
+
 render();
 </script>
 </body>
