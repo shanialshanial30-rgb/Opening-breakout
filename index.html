@@ -49,6 +49,11 @@ const list = document.getElementById("list");
 
 let running = false;
 let liveData = {};
+const trades = {};
+let tradeCount = 0;
+const MAX_TRADES = 5;
+const TP_PCT = 0.025;
+const SL_PCT = 0.015;
 
 function getApiKey() {
   let key = localStorage.getItem("twelveDataApiKey");
@@ -112,18 +117,93 @@ function render() {
     const price = Number(d.price);
 
     const buy = open * 1.015;
-    const sell = open * 0.985;
+const sell = open * 0.985;
 
-    let status = "Watching for first trigger";
+let status = "Watching for first trigger";
+const trade = trades[s];
+
+if (!trade && tradeCount < MAX_TRADES) {
 
     if (price >= buy) {
-      status = "🟢 BUY trigger reached — DRY RUN";
+
+        const entry = price;
+
+        trades[s] = {
+            direction: "BUY",
+            entry: entry,
+            tp: entry * (1 + TP_PCT),
+            sl: entry * (1 - SL_PCT),
+            status: "OPEN"
+        };
+
+        tradeCount++;
+
     } else if (price <= sell) {
-      status = "🔴 SELL trigger reached — DRY RUN";
-    } else {
-      const distanceBuy = ((price / open) - 1) * 100;
-      status = `Live ${money(price)} • ${distanceBuy >= 0 ? "+" : ""}${distanceBuy.toFixed(2)}% from open`;
+
+        const entry = price;
+
+        trades[s] = {
+            direction: "SELL",
+            entry: entry,
+            tp: entry * (1 - TP_PCT),
+            sl: entry * (1 + SL_PCT),
+            status: "OPEN"
+        };
+
+        tradeCount++;
     }
+}
+
+const currentTrade = trades[s];
+
+if (currentTrade) {
+
+    if (currentTrade.status === "OPEN") {
+
+        if (
+            currentTrade.direction === "BUY" &&
+            price >= currentTrade.tp
+        ) {
+            currentTrade.status = "TP HIT";
+
+        } else if (
+            currentTrade.direction === "BUY" &&
+            price <= currentTrade.sl
+        ) {
+            currentTrade.status = "SL HIT";
+
+        } else if (
+            currentTrade.direction === "SELL" &&
+            price <= currentTrade.tp
+        ) {
+            currentTrade.status = "TP HIT";
+
+        } else if (
+            currentTrade.direction === "SELL" &&
+            price >= currentTrade.sl
+        ) {
+            currentTrade.status = "SL HIT";
+        }
+    }
+
+    status =
+        currentTrade.direction +
+        " • Entry " + money(currentTrade.entry) +
+        " • TP " + money(currentTrade.tp) +
+        " • SL " + money(currentTrade.sl) +
+        " • " + currentTrade.status;
+
+} else if (tradeCount >= MAX_TRADES) {
+
+    status = "Maximum 5 trades reached";
+
+} else {
+
+    const distanceBuy = ((price / open) - 1) * 100;
+
+    status =
+        `Live ${money(price)} • ${distanceBuy >= 0 ? "+" : ""}${distanceBuy.toFixed(2)}% from open`;
+}
 
     el.innerHTML = `
       <div class="top">
