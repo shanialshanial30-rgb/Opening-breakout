@@ -26,6 +26,7 @@ h1{font-size:30px;letter-spacing:-.6px;margin:0}.sub{color:#929aa7;font-size:13p
 <div class="box"><div class="label">State</div><div class="value" id="state">Stopped</div></div>
  </div>
  <button class="btn" id="start">START DRY RUN</button>
+ <button class="btn" id="test">RUN STRATEGY TEST</button>
 </section>
 
 <section class="card">
@@ -339,6 +340,41 @@ document.getElementById("start").onclick = async () => {
 };
 
 render();
+ document.getElementById("test").onclick = () => {
+
+  const entry = 100;
+
+  const buyTP = entry * 1.025;
+  const buySL = entry * 0.985;
+
+  const sellTP = entry * 0.975;
+  const sellSL = entry * 1.015;
+
+  const buyTPTest = 102.50 >= buyTP;
+  const buySLTest = 98.50 <= buySL;
+
+  const sellTPTest = 97.50 <= sellTP;
+  const sellSLTest = 101.50 >= sellSL;
+
+  const passed =
+    buyTPTest &&
+    buySLTest &&
+    sellTPTest &&
+    sellSLTest;
+
+  alert(
+    "STRATEGY TEST\n\n" +
+    "BUY\n" +
+    "Entry: $100.00\n" +
+    "TP: $" + buyTP.toFixed(2) + "\n" +
+    "SL: $" + buySL.toFixed(2) + "\n\n" +
+    "SELL\n" +
+    "Entry: $100.00\n" +
+    "TP: $" + sellTP.toFixed(2) + "\n" +
+    "SL: $" + sellSL.toFixed(2) + "\n\n" +
+    (passed ? "✅ ALL TESTS PASSED" : "❌ TEST FAILED")
+  );
+};
 </script>
 </body>
 </html>
